@@ -1,0 +1,48 @@
+name: Build and Push Docker Image to Azure Container Registry
+
+on:
+  # Run workflow when pushing to the 'main' branch
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      # Replace with your actual registry FQDN, or use a GitHub Secret
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker build metadata
+        id: vars
+        run: |
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          IMAGE_NAME="${{ github.event.repository.name }}"
+
+          echo "COMMIT_SHA=$COMMIT_SHA" >> $GITHUB_ENV
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+          echo "Using full tag: $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA"
+          echo "Using latest tag: $ACR_LOGIN_SERVER/$IMAGE_NAME:latest"
+
+      - name: Log in to Azure Container Registry
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --no-cache \
+            -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA \
+            -t $ACR_LOGIN_SERVER/$IMAGE_NAME:latest .
+
+      - name: Push Docker image to Azure Container Registry
+        run: |
+          echo "Pushing $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA"
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA
+
+          echo "Pushing $ACR_LOGIN_SERVER/$IMAGE_NAME:latest"
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:latest
