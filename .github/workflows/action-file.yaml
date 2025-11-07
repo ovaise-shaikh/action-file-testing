@@ -2,7 +2,7 @@ name: Build and Push to Azure Container Registry
 
 on:
   push:
-    branches: [ main, dev, phase-2-dev, phase_3_gufran_dev ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       branch:
@@ -21,6 +21,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # use dispatch input if set, else the actual pushed branch name
           ref: ${{ github.event.inputs.branch || github.ref_name }}
 
       - name: Export ACR credentials and registry to environment
@@ -31,34 +32,40 @@ jobs:
 
       - name: Set up environment variables
         run: |
-          if [ "${{ github.event.inputs.branch }}" == "dev" ]; then
+          BRANCH="${{ github.event.inputs.branch || github.ref_name }}"
+          echo "Resolved BRANCH: $BRANCH"
+
+          if [ "$BRANCH" == "dev" ]; then
             echo "Using secrets for dev"
             echo "${{ secrets.TA_BOT_ENV_DEV }}" > .env
             TAG="v${{ github.run_number }}"
-          elif [ "${{ github.event.inputs.branch }}" == "phase-2-dev" ]; then
+          elif [ "$BRANCH" == "phase-2-dev" ]; then
             echo "Using secrets for phase-2-dev"
             echo "${{ secrets.TA_BOT_ENV_PHASE_2_DEV }}" > .env
             TAG="v-phase2-${{ github.run_number }}"
-          elif [ "${{ github.event.inputs.branch }}" == "phase_3_gufran_dev" ]; then
+          elif [ "$BRANCH" == "phase_3_gufran_dev" ]; then
             echo "Using secrets for phase-3-dev"
             echo "${{ secrets.TA_BOT_ENV_PHASE_3_DEV }}" > .env
             TAG="v-phase3-${{ github.run_number }}"
           else
-            echo "Branch not recognized. Exiting."
-            exit 0
+            echo "Branch not recognized ($BRANCH). Using default test tag."
+            TAG="test-${{ github.run_number }}"
           fi
 
           echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "TAG is: $TAG"
 
       - name: Log in to Azure Container Registry
-        run: echo "$ACR_PASSWORD" | docker login $ACR_LOGIN_SERVER -u "$ACR_USERNAME" --password-stdin
+        run: echo "$ACR_PASSWORD" | docker login "$ACR_LOGIN_SERVER" -u "$ACR_USERNAME" --password-stdin
 
       - name: Build Docker image
         run: |
+          # Safety net: ensure TAG is never empty
+          : "${TAG:=test-${GITHUB_RUN_NUMBER}}"
           echo "Building image: $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
-          docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG .
+          docker build -t "$ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG" .
 
       - name: Push Docker image
         run: |
           echo "Pushing image: $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
-          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG
+          docker push "$ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
