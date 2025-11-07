@@ -2,7 +2,7 @@ name: Build and Push to Azure Container Registry
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev, phase-2-dev, phase_3_gufran_dev ]
   workflow_dispatch:
     inputs:
       branch:
