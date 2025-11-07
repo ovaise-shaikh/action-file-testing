@@ -1,48 +1,57 @@
-name: Build and Push Docker Image to Azure Container Registry
+name: Build and Push to Azure Container Registry
 
 on:
-  # Run workflow when pushing to the 'main' branch
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'main'
+
+env:
+  IMAGE_NAME: travel-bot
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
-
-    env:
-      # Replace with your actual registry FQDN, or use a GitHub Secret
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
 
-      - name: Set up Docker build metadata
-        id: vars
+      - name: Set up environment variables
         run: |
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          IMAGE_NAME="${{ github.event.repository.name }}"
+          if [ "${{ github.event.inputs.branch }}" == "dev" ]; then
+            echo "Using secrets for dev"
+            echo "${{ secrets.TA_BOT_ENV_DEV }}" > .env
+            TAG="v${{ github.run_number }}"
+          elif [ "${{ github.event.inputs.branch }}" == "phase-2-dev" ]; then
+            echo "Using secrets for phase-2-dev"
+            echo "${{ secrets.TA_BOT_ENV_PHASE_2_DEV }}" > .env
+            TAG="v-phase2-${{ github.run_number }}"
+          elif [ "${{ github.event.inputs.branch }}" == "phase_3_gufran_dev" ]; then
+            echo "Using secrets for phase-3-dev"
+            echo "${{ secrets.TA_BOT_ENV_PHASE_3_DEV }}" > .env
+            TAG="v-phase3-${{ github.run_number }}"
+          else
+            echo "Branch not recognized. Exiting."
+            exit 0
+          fi
 
-          echo "COMMIT_SHA=$COMMIT_SHA" >> $GITHUB_ENV
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-
-          echo "Using full tag: $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA"
-          echo "Using latest tag: $ACR_LOGIN_SERVER/$IMAGE_NAME:latest"
+          echo "TAG=$TAG" >> $GITHUB_ENV
 
       - name: Log in to Azure Container Registry
         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
       - name: Build Docker image
         run: |
-          docker build \
-            --no-cache \
-            -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA \
-            -t $ACR_LOGIN_SERVER/$IMAGE_NAME:latest .
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.TAG }} .
 
-      - name: Push Docker image to Azure Container Registry
+      - name: Push Docker image
         run: |
-          echo "Pushing $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA"
-          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$COMMIT_SHA
-
-          echo "Pushing $ACR_LOGIN_SERVER/$IMAGE_NAME:latest"
-          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:latest
+          echo "Pushing image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}"
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}
