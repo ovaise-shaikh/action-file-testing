@@ -23,35 +23,41 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: Set up environment variables
+      - name: Set up build variables
+        id: vars
         run: |
           if [ "${{ github.event.inputs.branch }}" == "dev" ]; then
-            echo "Using secrets for dev"
-            echo "${{ secrets.TA_BOT_ENV_DEV }}" > .env
-            TAG="v${{ github.run_number }}"
+            echo "Using dev branch"
+            echo "TAG=v${{ github.run_number }}" >> $GITHUB_ENV
+            echo "Fetching secrets for dev"
+            echo "${{ secrets.DEV_ENV_FILE }}" > .env
           elif [ "${{ github.event.inputs.branch }}" == "phase-2-dev" ]; then
-            echo "Using secrets for phase-2-dev"
-            echo "${{ secrets.TA_BOT_ENV_PHASE_2_DEV }}" > .env
-            TAG="v-phase2-${{ github.run_number }}"
+            echo "Using phase-2-dev branch"
+            echo "TAG=v-phase2-${{ github.run_number }}" >> $GITHUB_ENV
+            echo "Fetching secrets for phase-2-dev"
+            echo "${{ secrets.PHASE2_ENV_FILE }}" > .env
           elif [ "${{ github.event.inputs.branch }}" == "phase_3_gufran_dev" ]; then
-            echo "Using secrets for phase-3-dev"
-            echo "${{ secrets.TA_BOT_ENV_PHASE_3_DEV }}" > .env
-            TAG="v-phase3-${{ github.run_number }}"
+            echo "Using phase_3_gufran_dev branch"
+            echo "TAG=v-phase3-${{ github.run_number }}" >> $GITHUB_ENV
+            echo "Fetching secrets for phase-3-dev"
+            echo "${{ secrets.PHASE3_ENV_FILE }}" > .env
           else
-            echo "Branch not recognized. Exiting."
+            echo "Not on recognized branch"
             exit 0
           fi
-
-          echo "TAG=$TAG" >> $GITHUB_ENV
+          
+          echo "TAG=$TAG"
+          echo "ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}" >> $GITHUB_ENV
 
       - name: Log in to Azure Container Registry
         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
       - name: Build Docker image
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.TAG }} .
+          echo "Building image: $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
+          docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG .
 
-      - name: Push Docker image
+      - name: Push Docker image to Azure Container Registry
         run: |
-          echo "Pushing image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}"
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}
+          echo "Pushing image: $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG"
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$TAG
